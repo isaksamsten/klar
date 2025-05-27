@@ -1,0 +1,46 @@
+:root {
+  --bg-color: rgba(77, 77, 77, 0.6);
+  --label-color: rgb(58, 58, 60);
+  --alternate-label-color: rgba(44, 44, 46, 0.8);
+  --dim-label-color: rgb(142, 142, 147);
+  --border-color: rgba(199, 199, 204, .95);
+  --highlight-color: rgba(209, 209, 214,0.95);
+  --indicator-focus-color: rgba(10, 132, 255, 0.95);
+  --indicator-color: rgba(209, 209, 214, .95);
+}
+
+#klar {
+    background-color: transparent;
+    padding: 40px;
+}
+
+#main-view {
+    background-color: var(--bg-color);
+    border-radius: 22px;
+    padding: 20px 30px 20px;
+}
+
+.icon {
+    color: white;
+    padding: 30px;
+}
+
+#status-bar {
+    background-color: var(--alternate-label-color);
+    margin-bottom: 15px;
+    padding: 1px;
+}
+
+#status-segment {
+    opacity: 1;
+}
+
+#status-segment.active {
+    background-color: white;
+    box-shadow: rgba(0, 0, 0, 0.15) 1.95px 1.95px 2.6px;
+}
+
+#status-segment.warning {
+    background-color: red;
+    box-shadow: rgba(0, 0, 0, 0.15) 1.95px 1.95px 2.6px;
+}

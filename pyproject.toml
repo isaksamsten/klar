@@ -1,0 +1,17 @@
+[project]
+name = "klar"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Isak Samsten", email = "isak@samsten.se" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.scripts]
+klar = "klar:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
