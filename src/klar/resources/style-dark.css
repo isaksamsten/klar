@@ -1,0 +1,7 @@
+:root {
+  --bg-color: rgba(44, 44, 46, 0.7);
+  --fg-color: rgb(199, 199, 204);
+  --indicator-inactive-color: rgba(58, 58, 60, 0.95);
+  --indicator-active-color: rgba(174, 174, 178, 0.95);
+}
+

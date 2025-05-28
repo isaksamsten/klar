@@ -1,17 +1,13 @@
 :root {
-  --bg-color: rgba(77, 77, 77, 0.6);
-  --label-color: rgb(58, 58, 60);
-  --alternate-label-color: rgba(44, 44, 46, 0.8);
-  --dim-label-color: rgb(142, 142, 147);
-  --border-color: rgba(199, 199, 204, .95);
-  --highlight-color: rgba(209, 209, 214,0.95);
-  --indicator-focus-color: rgba(10, 132, 255, 0.95);
-  --indicator-color: rgba(209, 209, 214, .95);
+  --bg-color: rgba(229, 229, 234, 0.7);
+  --fg-color: rgb(72, 72, 74);
+  --indicator-inactive-color: rgb(209, 209, 214);
+  --indicator-active-color: rgb(99, 99, 102);
 }
 
 #klar {
     background-color: transparent;
-    padding: 40px;
+    padding: 10px;
 }
 
 #main-view {
@@ -21,26 +17,34 @@
 }
 
 .icon {
-    color: white;
+    color: var(--fg-color);
     padding: 30px;
+    -gtk-icon-shadow: rgba(0, 0, 0, 0.15) 1.95px 1.95px 2.6px;
 }
 
 #status-bar {
-    background-color: var(--alternate-label-color);
+    background-color: var(--indicator-inactive-color);
     margin-bottom: 15px;
     padding: 1px;
+    border-radius: 3px;
 }
 
 #status-segment {
     opacity: 1;
 }
 
+#status-segment:first-child {
+  border-radius: 3px 0 0 3px;
+}
+
+#status-segment:last-child {
+  border-radius: 0 3px 3px 0;
+}
+
 #status-segment.active {
-    background-color: white;
-    box-shadow: rgba(0, 0, 0, 0.15) 1.95px 1.95px 2.6px;
+    background-color: var(--indicator-active-color);
 }
 
 #status-segment.warning {
     background-color: red;
-    box-shadow: rgba(0, 0, 0, 0.15) 1.95px 1.95px 2.6px;
 }

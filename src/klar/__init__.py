@@ -1,6 +1,4 @@
 from ctypes import CDLL
-from operator import le
-from sqlite3 import connect
 from typing import Iterable, override
 
 CDLL("libgtk4-layer-shell.so.0")
@@ -17,9 +15,11 @@ import pulsectl
 
 from ._config import (
     DEFAULT_BRIGHTNESS_PROVIDER,
+    DEFAULT_KEYBOARD_BRIGHTNESS_PROVIDER,
     DEFAULT_CSS_PROVIDER,
     DEFAULT_USER_CSS_PROVIDER,
-    DEFAULT_KEYBOARD_BRIGHTNESS_PROVIDER,
+    DEFAULT_DARK_CSS_PROVIDER,
+    DEFAULT_DARK_USER_CSS_PROVIDER,
     BrightnessProvider,
 )
 
@@ -106,59 +106,70 @@ class BrightnessMonitor(FileMonitor):
         return model
 
 
-def find_default_ac_path():
-    upower_proxy = Gio.DBusProxy.new_for_bus_sync(
-        Gio.BusType.SYSTEM,
-        Gio.DBusProxyFlags.NONE,
-        None,
-        # Service name, object path, interface:
-        "org.freedesktop.UPower",
-        "/org/freedesktop/UPower",
-        "org.freedesktop.UPower",
-        None,
-    )
-
-    result = upower_proxy.call_sync(
-        "EnumerateDevices", None, Gio.DBusCallFlags.NONE, -1, None
-    )
-
-    for obj_path in result.unpack()[0]:
-        device_proxy = Gio.DBusProxy.new_for_bus_sync(
-            Gio.BusType.SYSTEM,
-            Gio.DBusProxyFlags.NONE,
-            None,
-            "org.freedesktop.UPower",
-            obj_path,
-            "org.freedesktop.UPower.Device",
-            None,
-        )
-        typ = device_proxy.get_cached_property("Type")
-        if typ is not None and typ.unpack() == 1:
-            return device_proxy
-    return None
-
-
 class AcMonitor(Monitor):
     connected = GObject.Property(type=bool, default=False)
 
     def __init__(self) -> None:
         super().__init__()
-        self._dbus_proxy = find_default_ac_path()
-        self._dbus_proxy_id = None
+        self._dbus_ac_proxy = None
+        self._dbus_batter_proxy = None
+        self._dbus_ac_proxy_id = None
+
+    def _get_ac_and_battery_proxy(
+        self,
+    ) -> (Gio.DBusProxy | None, Gio.DBusProxy | None):
+        upower_proxy = Gio.DBusProxy.new_for_bus_sync(
+            Gio.BusType.SYSTEM,
+            Gio.DBusProxyFlags.NONE,
+            None,
+            "org.freedesktop.UPower",
+            "/org/freedesktop/UPower",
+            "org.freedesktop.UPower",
+            None,
+        )
+
+        result = upower_proxy.call_sync(
+            "EnumerateDevices", None, Gio.DBusCallFlags.NONE, -1, None
+        )
+
+        ac_device_proxy = None
+        battery_device_proxy = None
+        for obj_path in result.unpack()[0]:
+            device_proxy = Gio.DBusProxy.new_for_bus_sync(
+                Gio.BusType.SYSTEM,
+                Gio.DBusProxyFlags.NONE,
+                None,
+                "org.freedesktop.UPower",
+                obj_path,
+                "org.freedesktop.UPower.Device",
+                None,
+            )
+            typ = device_proxy.get_cached_property("Type")
+            if ac_device_proxy is None and typ is not None and typ.unpack() == 1:
+                ac_device_proxy = device_proxy
+            elif battery_device_proxy is None and typ is not None and typ.unpack() == 2:
+                battery_device_proxy = device_proxy
+
+            if ac_device_proxy is not None and battery_device_proxy is not None:
+                break
+
+        return ac_device_proxy, battery_device_proxy
 
     @override
     def do_start(self):
-        self._dbus_proxy_id = self._dbus_proxy.connect(
-            "g-properties-changed", self._on_properties_changed
-        )
+        self._dbus_ac_proxy, self._dbus_batter_proxy = self._get_ac_and_battery_proxy()
+        if self._dbus_ac_proxy is not None:
+            self._dbus_ac_proxy_id = self._dbus_ac_proxy.connect(
+                "g-properties-changed", self._on_properties_changed
+            )
 
     @override
     def is_started(self):
-        return self._dbus_proxy_id is not None
+        return self._dbus_ac_proxy is not None
 
     @override
     def do_close(self):
-        self._dbus_proxy.disconnect(self._dbus_proxy_id)
+        self._dbus_ac_proxy.disconnect(self._dbus_ac_proxy_id)
 
     def _on_properties_changed(self, proxy, changed, invalidated):
         if "Online" in changed.keys():
@@ -172,10 +183,42 @@ class AcMonitor(Monitor):
         model = StatusModel("ac", levels=0)
 
         def update_icon(binding, prop):
+            percentage = 0
+            if self._dbus_batter_proxy is not None:
+                if self._dbus_batter_proxy:
+                    perc_variant = self._dbus_batter_proxy.get_cached_property(
+                        "Percentage"
+                    )
+                    if perc_variant is not None:
+                        percentage = perc_variant.unpack()
+
             if self.connected:
-                icon_name = "battery-level-50-charging-symbolic"
+                if percentage >= 95:
+                    icon_name = "battery-level-100-charging-symbolic"
+                elif percentage >= 75:
+                    icon_name = "battery-level-80-charging-symbolic"
+                elif percentage >= 55:
+                    icon_name = "battery-level-60-charging-symbolic"
+                elif percentage >= 35:
+                    icon_name = "battery-level-40-charging-symbolic"
+                elif percentage >= 15:
+                    icon_name = "battery-level-20-charging-symbolic"
+                else:
+                    icon_name = "battery-level-10-charging-symbolic"
             else:
-                icon_name = "battery-level-50-symbolic"
+                if percentage >= 95:
+                    icon_name = "battery-level-100-symbolic"
+                elif percentage >= 75:
+                    icon_name = "battery-level-80-symbolic"
+                elif percentage >= 55:
+                    icon_name = "battery-level-60-symbolic"
+                elif percentage >= 35:
+                    icon_name = "battery-level-40-symbolic"
+                elif percentage >= 15:
+                    icon_name = "battery-level-20-symbolic"
+                else:
+                    icon_name = "battery-level-10-symbolic"
+
             model.icon = Gio.ThemedIcon.new_with_default_fallbacks(icon_name)
 
         self.connect("notify::connected", update_icon)
@@ -202,23 +245,34 @@ class PulseAudioMonitor(Monitor):
         self._pulse_event_listen_thread = threading.Thread(
             None, self._pulse_listen.event_listen, daemon=True
         )
+        self._is_started = False
 
     def do_start(self):
-        self._pulse_listen.connect()
-        self._pulse_query.connect()
-        self._pulse_listen.event_mask_set("sink", "source")
-        self._pulse_listen.event_callback_set(self._on_pulse_event_change)
-        self._pulse_event_listen_thread.start()
+        try:
+            self._pulse_listen.connect()
+            self._pulse_query.connect()
+            self._pulse_listen.event_mask_set("sink", "source")
+            self._pulse_listen.event_callback_set(self._on_pulse_event_change)
+            self._pulse_event_listen_thread.start()
+        finally:
+            self._is_started = True
 
     def do_stop(self):
         self._pulse_listen.close()
         self._pulse_query.close()
         self._pulse_event_listen_thread.join()
 
+    @override
+    def is_started(self):
+        return self._is_started
+
     def _on_pulse_event_change(self, ev):
         with self._timers_lock:
             if index := self._timers.get(ev.index):
                 GLib.source_remove(index)
+
+            # We need to debunce otherwise we get triggered on
+            # multiple events. 20ms seems to be ok...
             self._timers[ev.index] = GLib.timeout_add(
                 20, self._on_pulse_event_timeout, ev.index
             )
@@ -239,9 +293,7 @@ class PulseAudioMonitor(Monitor):
             if self.current_sink != sink.name:
                 self.current_sink = sink.name
         except Exception:
-            import logging
-
-            logging.exception("Exception in PulseDaemon._on_pulse_event_timeout")
+            pass
         return False
 
     def new_model(self):
@@ -250,14 +302,33 @@ class PulseAudioMonitor(Monitor):
 
         model = StatusModel("pulse", 16)
 
+        def volume_to_icon_name(volume):
+            icon_name = "audio-volume-low-symbolic"
+            if volume > 1.0:
+                icon_name = "audio-volume-overamplified-symbolic"
+            elif volume > 0.66:
+                icon_name = "audio-volume-high-symbolic"
+            elif volume > 0.33:
+                icon_name = "audio-volume-medium-symbolic"
+            elif volume <= 0.0:
+                icon_name = "audio-volume-muted-symbolic"
+            return icon_name
+
         def update_icon(binding, prop):
             if self.mute:
                 icon_name = "audio-volume-muted-symbolic"
             else:
-                icon_name = "audio-volume-high-symbolic"
+                icon_name = volume_to_icon_name(self.volume)
+            model.icon = Gio.ThemedIcon.new_with_default_fallbacks(icon_name)
+
+        def transform_volume_to_icon(binding, volume):
+            icon_name = volume_to_icon_name(volume)
             model.icon = Gio.ThemedIcon.new_with_default_fallbacks(icon_name)
 
         self.bind_property("volume", model, "value")
+        self.bind_property(
+            "volume", model, "icon", transform_to=transform_volume_to_icon
+        )
         self.connect("notify::mute", update_icon)
         update_icon(None, None)
         return model
@@ -369,9 +440,7 @@ class StatusBar(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
         self.set_name("status-bar")
         self.levels = levels
-        if levels == 0:
-            self.set_opacity(0)
-
+        self.set_halign(Gtk.Align.CENTER)
         for i in range(levels):
             self.append(StatusSegment(height=10, width=8))
 
@@ -384,7 +453,7 @@ class StatusBar(Gtk.Box):
     def set_level(self, level: float):
         filled_levels = int(round(max(0.0, min(1.0, level)) * self.levels))
         for i, status_segment in enumerate(list(self)):
-            status_segment.set_active(i <= filled_levels)
+            status_segment.set_active(i < filled_levels)
             status_segment.set_warning(level > 1.0)
 
 
@@ -400,9 +469,15 @@ class StatusIndicator(Gtk.Box):
         self.image = Gtk.Image.new()
         self.image.set_pixel_size(88)
         self.image.add_css_class("icon")
-        self.progress_bar = StatusBar(model.levels)
         self.append(self.image)
-        self.append(self.progress_bar)
+        self.set_valign(Gtk.Align.CENTER)
+        self.set_halign(Gtk.Align.CENTER)
+
+        if model.levels > 0:
+            self.progress_bar = StatusBar(model.levels)
+            self.append(self.progress_bar)
+        else:
+            self.progress_bar = None
         self._model_value_id = None
         self._model_icon_id = None
         self.model = model
@@ -416,7 +491,8 @@ class StatusIndicator(Gtk.Box):
         self.on_icon_change(model.icon)
 
     def on_value_change(self, progress):
-        self.progress_bar.set_level(progress)
+        if self.progress_bar is not None:
+            self.progress_bar.set_level(progress)
 
     def on_icon_change(self, icon):
         if icon is not None:
@@ -432,7 +508,7 @@ class KlarWindow(Gtk.Window):
         self.stack = Gtk.Stack(
             hhomogeneous=True,
             vhomogeneous=True,
-            transition_type=Gtk.StackTransitionType.CROSSFADE,
+            transition_type=Gtk.StackTransitionType.NONE,
         )
         main_view.append(self.stack)
         self.set_child(main_view)
@@ -449,11 +525,7 @@ class KlarWindow(Gtk.Window):
         self.stack.add_named(progress_box, progress_box.get_name())
 
     def switch_to(self, name):
-        transition_type = Gtk.StackTransitionType.NONE
-        if self.get_visible():
-            transition_type = Gtk.StackTransitionType.NONE
-
-        self.stack.set_visible_child_full(name, transition_type)
+        self.stack.set_visible_child_name(name)
 
 
 MONITORS = [
@@ -491,10 +563,11 @@ class KlarApp(Adw.Application):
         self.window = KlarWindow(self)
         for monitor in MONITORS:
             monitor.start()
-            status_model = monitor.new_model()
-            status_model.connect("notify", show_callback)
-            status_indicator = StatusIndicator(model=status_model)
-            self.window.add_status_indicator(status_indicator)
+            if monitor.is_started():
+                status_model = monitor.new_model()
+                status_model.connect("notify", show_callback)
+                status_indicator = StatusIndicator(model=status_model)
+                self.window.add_status_indicator(status_indicator)
 
         LayerShell.init_for_window(self.window)
         LayerShell.set_namespace(self.window, "klar")
@@ -504,7 +577,7 @@ class KlarApp(Adw.Application):
 
 
 def main():
-    klar = KlarApp()
+    app = KlarApp()
     Gtk.StyleContext.add_provider_for_display(
         Gdk.Display.get_default(),
         DEFAULT_CSS_PROVIDER,
@@ -517,5 +590,37 @@ def main():
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
         )
 
-    klar.register(None)
-    klar.run()
+    if app.get_style_manager().get_dark():
+        _set_dark_style()
+
+    app.get_style_manager().connect("notify::dark", on_dark)
+
+    app.register(None)
+    app.run()
+
+
+def on_dark(style_manager, prop):
+    if style_manager.get_dark():
+        _set_dark_style()
+    else:
+        Gtk.StyleContext.remove_provider_for_display(
+            Gdk.Display.get_default(), DEFAULT_DARK_CSS_PROVIDER
+        )
+        if DEFAULT_DARK_USER_CSS_PROVIDER is not None:
+            Gtk.StyleContext.remove_provider_for_display(
+                Gdk.Display.get_default(), DEFAULT_DARK_USER_CSS_PROVIDER
+            )
+
+
+def _set_dark_style():
+    Gtk.StyleContext.add_provider_for_display(
+        Gdk.Display.get_default(),
+        DEFAULT_DARK_CSS_PROVIDER,
+        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+    )
+    if DEFAULT_DARK_USER_CSS_PROVIDER is not None:
+        Gtk.StyleContext.add_provider_for_display(
+            Gdk.Display.get_default(),
+            DEFAULT_DARK_USER_CSS_PROVIDER,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
+        )
