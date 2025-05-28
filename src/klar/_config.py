@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import importlib
 import importlib.resources
 from dataclasses import dataclass
@@ -33,37 +34,36 @@ class BrightnessProvider:
     source: str
 
 
-def guess_default_brightness_provider(base) -> BrightnessProvider:
-    subdirs = os.listdir(base)
-    if not subdirs:
-        raise FileNotFoundError("No backlight devices found!")
+def guess_default_brightness_provider(base: Path) -> BrightnessProvider:
+    if not base.is_dir():
+        return None
 
     best = None
     best_max = -1
-    for subdir in subdirs:
-        max_brightness_file = os.path.join(base, subdir, "max_brightness")
-        brightness_file = os.path.join(base, subdir, "brightness")
-        if os.path.isfile(max_brightness_file) and os.path.isfile(brightness_file):
+    for subdir in base.iterdir():
+        max_brightness_file = subdir / "max_brightness"
+        brightness_file = subdir / "brightness"
+
+        if max_brightness_file.is_file() and brightness_file.is_file():
             with open(max_brightness_file) as f:
                 max_brightness = int(f.read())
 
             if max_brightness > best_max:
                 best = BrightnessProvider(
                     max_brightness=max_brightness,
-                    brightness_file=brightness_file,
-                    source=subdir,
+                    brightness_file=brightness_file.as_posix(),
+                    source=subdir.name,
                 )
                 best_max = max_brightness
-
-    if best is None:
-        raise Exception("No usable backlight device found!")
 
     return best
 
 
-DEFAULT_BRIGHTNESS_PROVIDER = guess_default_brightness_provider("/sys/class/backlight/")
+DEFAULT_BRIGHTNESS_PROVIDER = guess_default_brightness_provider(
+    Path("/sys", "class", "backlight")
+)
 DEFAULT_KEYBOARD_BRIGHTNESS_PROVIDER = guess_default_brightness_provider(
-    "/sys/class/leds/"
+    Path("/sys", "class", "leds")
 )
 DEFAULT_CSS_PROVIDER = load_system_style(filename="style.css")
 DEFAULT_DARK_CSS_PROVIDER = load_system_style(filename="style-dark.css")

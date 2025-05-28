@@ -29,16 +29,16 @@ from gi.repository import Gtk4LayerShell as LayerShell
 
 
 class Monitor(GObject.Object):
-    def start(self):
+    def start(self) -> None:
         self.do_start()
 
-    def close(self):
-        self.do_close()
+    def close(self) -> None:
+        self.do_stop()
 
-    def is_started(self):
+    def is_started(self) -> bool:
         return False
 
-    def do_close(self):
+    def do_stop(self):
         raise NotImplementedError()
 
     def do_start(self):
@@ -49,49 +49,56 @@ class Monitor(GObject.Object):
 
 
 class FileMonitor(Monitor):
-    def __init__(self, file: Gio.File) -> None:
+    def __init__(self, file: Gio.File | None) -> None:
         super().__init__()
         self._file = file
-        self._file_monitor = None
-        self._file_monitor_id = None
+        self._file_monitor: Gio.FileMonitor | None = None
+        self._file_monitor_id: int | None = None
 
     @override
     def do_start(self):
-        self._file_monitor = self._file.monitor(Gio.FileMonitorFlags.NONE, None)
-        self._file_monitor_id = self._file_monitor.connect(
-            "changed", self._on_file_change
-        )
+        if self._file is not None:
+            self._file_monitor = self._file.monitor(Gio.FileMonitorFlags.NONE, None)
+            self._file_monitor_id = self._file_monitor.connect(
+                "changed", self._on_file_change
+            )
 
     @override
-    def is_started(self):
-        return self._file_monitor_id is not None
+    def is_started(self) -> bool:
+        return self._file is not None
 
     @override
-    def do_stop(self):
-        if self._file_monitor_id is not None:
+    def do_stop(self) -> None:
+        if self._file is not None:
             self._file_monitor.cancel()
             self._file_monitor.disconnect(self._file_monitor_id)
             self._file_monitor_id = None
+            self._file_monitor = None
+            self._file = None
 
     def _on_file_change(self, monitor, file, other_file, event_type):
         if event_type == Gio.FileMonitorEvent.CHANGES_DONE_HINT:
             with open(file) as file:
                 self.on_change(file.read())
 
-    def on_change(self, content: str):
+    def on_change(self, data: str) -> None:
         pass
 
 
 class BrightnessMonitor(FileMonitor):
     brightness = GObject.Property(type=float, default=0.0)
 
-    def __init__(self, icon, brightness_provider: BrightnessProvider):
-        super().__init__(Gio.File.new_for_path(brightness_provider.brightness_file))
+    def __init__(self, icon, brightness_provider: BrightnessProvider | None):
+        file = None
+        if brightness_provider is not None:
+            file = Gio.File.new_for_path(brightness_provider.brightness_file)
+
+        super().__init__(file)
         self.icon = icon
         self.brightness_provider = brightness_provider
 
     @override
-    def on_change(self, data: str):
+    def on_change(self, data: str) -> None:
         self.brightness = int(data) / self.brightness_provider.max_brightness
 
     def new_model(self):
@@ -117,7 +124,7 @@ class AcMonitor(Monitor):
 
     def _get_ac_and_battery_proxy(
         self,
-    ) -> (Gio.DBusProxy | None, Gio.DBusProxy | None):
+    ) -> tuple[Gio.DBusProxy | None, Gio.DBusProxy | None]:
         upower_proxy = Gio.DBusProxy.new_for_bus_sync(
             Gio.BusType.SYSTEM,
             Gio.DBusProxyFlags.NONE,
@@ -159,7 +166,7 @@ class AcMonitor(Monitor):
     def do_start(self):
         self._dbus_ac_proxy, self._dbus_batter_proxy = self._get_ac_and_battery_proxy()
         if self._dbus_ac_proxy is not None:
-            self._dbus_ac_proxy_id = self._dbus_ac_proxy.connect(
+            self._dbus_ac_proxy_id: int = self._dbus_ac_proxy.connect(
                 "g-properties-changed", self._on_properties_changed
             )
 
@@ -168,8 +175,9 @@ class AcMonitor(Monitor):
         return self._dbus_ac_proxy is not None
 
     @override
-    def do_close(self):
-        self._dbus_ac_proxy.disconnect(self._dbus_ac_proxy_id)
+    def do_stop(self):
+        if self._dbus_ac_proxy:
+            self._dbus_ac_proxy.disconnect(self._dbus_ac_proxy_id)
 
     def _on_properties_changed(self, proxy, changed, invalidated):
         if "Online" in changed.keys():
