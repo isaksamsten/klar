@@ -1,8 +1,10 @@
+import tomllib
 import os
 from pathlib import Path
 import importlib
 import importlib.resources
 from dataclasses import dataclass
+from typing import Tuple
 
 from gi.repository import Gtk
 
@@ -27,19 +29,12 @@ def load_user_style(filename="style.css"):
     return None
 
 
-@dataclass
-class BrightnessProvider:
-    max_brightness: int
-    brightness_file: str
-    source: str
-
-
-def guess_default_brightness_provider(base: Path) -> BrightnessProvider:
+def _guess_brightness_provider(base: Path) -> Tuple[str | None, int | None]:
     if not base.is_dir():
         return None
 
-    best = None
-    best_max = -1
+    best: Path | None = None
+    best_max: int = -1
     for subdir in base.iterdir():
         max_brightness_file = subdir / "max_brightness"
         brightness_file = subdir / "brightness"
@@ -49,22 +44,148 @@ def guess_default_brightness_provider(base: Path) -> BrightnessProvider:
                 max_brightness = int(f.read())
 
             if max_brightness > best_max:
-                best = BrightnessProvider(
-                    max_brightness=max_brightness,
-                    brightness_file=brightness_file.as_posix(),
-                    source=subdir.name,
-                )
+                best = brightness_file
                 best_max = max_brightness
 
-    return best
+    return best.as_posix(), best_max
 
 
-DEFAULT_BRIGHTNESS_PROVIDER = guess_default_brightness_provider(
-    Path("/sys", "class", "backlight")
-)
-DEFAULT_KEYBOARD_BRIGHTNESS_PROVIDER = guess_default_brightness_provider(
-    Path("/sys", "class", "leds")
-)
+def _get_max_brightness(file: Path) -> int | None:
+    try:
+        with open(file) as f:
+            return int(f.read())
+    except Exception:
+        return None
+
+
+@dataclass
+class MonitorBase:
+    enabled: bool
+    levels: int
+
+
+@dataclass
+class BrightnessConfig(MonitorBase):
+    device: str
+    max_brightness: int
+
+
+@dataclass
+class PulseAudioConfig(MonitorBase):
+    pass
+
+
+@dataclass
+class PowerConfig(MonitorBase):
+    pass
+
+
+@dataclass
+class MonitorConfig:
+    keyboard: BrightnessConfig
+    display: BrightnessConfig
+    power: PowerConfig
+    pulseaudio: PulseAudioConfig
+
+
+@dataclass
+class RevealAnimationConfig:
+    duration: int
+
+
+@dataclass
+class HideAnimationConfig:
+    duration: int
+
+
+@dataclass
+class AnimationConfig:
+    reveal: RevealAnimationConfig
+    hide: HideAnimationConfig
+
+
+@dataclass
+class AppearanceConfig:
+    icon_size: int
+    system_theme: str
+    animation: AnimationConfig
+
+
+@dataclass
+class KlarConfig:
+    appearance: AppearanceConfig
+    monitor: MonitorConfig
+
+
+def _load_brightness_config(section: dict, base_path: Path):
+    enabled = section.get("enabled", True)
+    device = None
+    max_brightness = None
+    if enabled:
+        if device := section.get("device"):
+            max_brightness = _get_max_brightness(Path(device) / "max_brightness")
+        else:
+            device, max_brightness = _guess_brightness_provider(base_path)
+    return BrightnessConfig(
+        enabled=enabled and max_brightness is not None,
+        device=device,
+        max_brightness=max_brightness,
+        levels=section.get("levels", 16),
+    )
+
+
+def load_configuration(config_path=None):
+    config_home = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    config_dir = os.path.join(config_home, "klar")
+    if config_path is None:
+        config_path = os.path.join(config_dir, "config.toml")
+    if os.path.isfile(config_path):
+        with open(config_path, "rb") as f:
+            config = tomllib.load(f)
+    else:
+        config = {}
+
+    appearance_section = config.get("appearance", {})
+    animation_section = appearance_section.get("animation", {})
+    reveal_section = animation_section.get("reveal", {})
+    hide_section = animation_section.get("hide", {})
+    monitor_section = config.get("monitor", {})
+    keyboard_section = monitor_section.get("keyboard", {})
+    display_section = monitor_section.get("display", {})
+    pulseaudio_section = monitor_section.get("pulseaudio", {})
+    power_section = monitor_section.get("pulseaudio", {})
+
+    display_brightness_config = _load_brightness_config(
+        display_section, Path("/sys", "class", "backlight")
+    )
+    keyboard_brightness_config = _load_brightness_config(
+        keyboard_section, Path("/sys", "class", "leds")
+    )
+    return KlarConfig(
+        appearance=AppearanceConfig(
+            icon_size=appearance_section.get("icon_size", 88),
+            system_theme=appearance_section.get("system_theme", "auto"),
+            animation=AnimationConfig(
+                reveal=RevealAnimationConfig(
+                    duration=reveal_section.get("duration", 20)
+                ),
+                hide=HideAnimationConfig(duration=hide_section.get("duration", 20)),
+            ),
+        ),
+        monitor=MonitorConfig(
+            keyboard=keyboard_brightness_config,
+            display=display_brightness_config,
+            power=PowerConfig(enabled=power_section.get("enabled", True), levels=0),
+            pulseaudio=PulseAudioConfig(
+                enabled=pulseaudio_section.get("enabled", True),
+                levels=pulseaudio_section.get("levels", 16),
+            ),
+        ),
+    )
+
+
+config = load_configuration()
+
 DEFAULT_CSS_PROVIDER = load_system_style(filename="style.css")
 DEFAULT_DARK_CSS_PROVIDER = load_system_style(filename="style-dark.css")
 

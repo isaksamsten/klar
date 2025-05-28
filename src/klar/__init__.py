@@ -1,5 +1,6 @@
 from ctypes import CDLL
-from typing import Iterable, override
+from decimal import MAX_PREC
+from typing import Callable, Generator, Iterable, List, override
 
 CDLL("libgtk4-layer-shell.so.0")
 import gi
@@ -14,13 +15,11 @@ import time
 import pulsectl
 
 from ._config import (
-    DEFAULT_BRIGHTNESS_PROVIDER,
-    DEFAULT_KEYBOARD_BRIGHTNESS_PROVIDER,
     DEFAULT_CSS_PROVIDER,
     DEFAULT_USER_CSS_PROVIDER,
     DEFAULT_DARK_CSS_PROVIDER,
     DEFAULT_DARK_USER_CSS_PROVIDER,
-    BrightnessProvider,
+    config,
 )
 
 
@@ -29,6 +28,13 @@ from gi.repository import Gtk4LayerShell as LayerShell
 
 
 class Monitor(GObject.Object):
+    levels: int
+
+    def __init__(self, levels: int = 0):
+        super().__init__()
+        print(self.__class__, levels)
+        self.levels = levels
+
     def start(self) -> None:
         self.do_start()
 
@@ -49,8 +55,8 @@ class Monitor(GObject.Object):
 
 
 class FileMonitor(Monitor):
-    def __init__(self, file: Gio.File | None) -> None:
-        super().__init__()
+    def __init__(self, file: Gio.File | None, *, levels: int) -> None:
+        super().__init__(levels=levels)
         self._file = file
         self._file_monitor: Gio.FileMonitor | None = None
         self._file_monitor_id: int | None = None
@@ -88,32 +94,27 @@ class FileMonitor(Monitor):
 class BrightnessMonitor(FileMonitor):
     brightness = GObject.Property(type=float, default=0.0)
 
-    def __init__(self, icon, brightness_provider: BrightnessProvider | None):
-        file = None
-        if brightness_provider is not None:
-            file = Gio.File.new_for_path(brightness_provider.brightness_file)
-
-        super().__init__(file)
+    def __init__(self, icon, *, file: str, max_brightness: int, levels: int):
+        super().__init__(Gio.File.new_for_path(file), levels=levels)
         self.icon = icon
-        self.brightness_provider = brightness_provider
+        self.max_brightness = max_brightness
 
     @override
     def on_change(self, data: str) -> None:
-        self.brightness = int(data) / self.brightness_provider.max_brightness
+        self.brightness = int(data) / self.max_brightness
 
     def new_model(self):
+        path = self._file.get_path()
         if not self.is_started():
-            raise ValueError(
-                f"BrightnessMonitor for {self.brightness_provider.brightness_file}"
-                " has not been started"
-            )
-        model = StatusModel(f"brightness-{self.brightness_provider.source}", 16)
+            raise ValueError(f"BrightnessMonitor for {path} has not been started")
+
+        model = StatusModel(f"brightness-{path}", self.levels)
         model.icon = Gio.ThemedIcon.new(self.icon)
         self.bind_property("brightness", model, "value")
         return model
 
 
-class AcMonitor(Monitor):
+class PowerMonitor(Monitor):
     connected = GObject.Property(type=bool, default=False)
 
     def __init__(self) -> None:
@@ -238,8 +239,8 @@ class PulseAudioMonitor(Monitor):
     mute = GObject.Property(type=bool, default=False)
     current_sink = GObject.Property(type=str, default="")
 
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, *, levels: int) -> None:
+        super().__init__(levels=levels)
 
         self._timers_lock = threading.Lock()
         self._timers = {}
@@ -279,7 +280,7 @@ class PulseAudioMonitor(Monitor):
             if index := self._timers.get(ev.index):
                 GLib.source_remove(index)
 
-            # We need to debunce otherwise we get triggered on
+            # We need to debounce otherwise we get triggered on
             # multiple events. 20ms seems to be ok...
             self._timers[ev.index] = GLib.timeout_add(
                 20, self._on_pulse_event_timeout, ev.index
@@ -308,7 +309,7 @@ class PulseAudioMonitor(Monitor):
         if not self._pulse_event_listen_thread.is_alive():
             raise ValueError("PulseAudioMonitor has not been started")
 
-        model = StatusModel("pulse", 16)
+        model = StatusModel("pulse", self.levels)
 
         def volume_to_icon_name(volume):
             icon_name = "audio-volume-low-symbolic"
@@ -330,8 +331,9 @@ class PulseAudioMonitor(Monitor):
             model.icon = Gio.ThemedIcon.new_with_default_fallbacks(icon_name)
 
         def transform_volume_to_icon(binding, volume):
-            icon_name = volume_to_icon_name(volume)
-            model.icon = Gio.ThemedIcon.new_with_default_fallbacks(icon_name)
+            if not self.mute:
+                icon_name = volume_to_icon_name(volume)
+                model.icon = Gio.ThemedIcon.new_with_default_fallbacks(icon_name)
 
         self.bind_property("volume", model, "value")
         self.bind_property(
@@ -362,6 +364,11 @@ class GenericTransition:
 
     def __call__(self, *args, **kwargs):
         before = self.before(*args, **kwargs)
+        if hasattr(self.duration, "__call__"):
+            duration = self.duration(*args, **kwargs)
+        else:
+            duration = self.duration
+
         if not before:
             initial, target = self.target, self.initial
         else:
@@ -373,7 +380,7 @@ class GenericTransition:
         if easing is None:
             easing = ease_out_cubic
 
-        if self.duration == 0:
+        if duration == 0:
             self.setter(target)
             self.method(*args, **kwargs)
             return
@@ -388,7 +395,7 @@ class GenericTransition:
 
             def do_animation():
                 elapsed = (time.monotonic() - start_time) * 1000
-                t = min(elapsed / self.duration, 1.0)
+                t = min(elapsed / duration, 1.0)
                 eased_t = easing(t)
                 self._current = initial + delta * eased_t
                 if t < 1.0:
@@ -415,7 +422,7 @@ class StatusSegment(Gtk.Box):
         super().__init__(orientation=Gtk.Orientation.HORIZONTAL)
         self.set_name("status-segment")
         self.set_hexpand(True)
-        self.set_halign(Gtk.Align.CENTER)
+        self.set_vexpand(True)
         self.set_size_request(width, height)
 
     def set_active(self, active):
@@ -445,12 +452,13 @@ class StatusModel(GObject.Object):
 
 class StatusBar(Gtk.Box):
     def __init__(self, levels=10):
-        super().__init__(orientation=Gtk.Orientation.HORIZONTAL, spacing=2)
-        self.set_name("status-bar")
+        super().__init__(
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=2, name="status-bar"
+        )
         self.levels = levels
-        self.set_halign(Gtk.Align.CENTER)
+        self.set_hexpand(True)
         for i in range(levels):
-            self.append(StatusSegment(height=10, width=8))
+            self.append(StatusSegment(height=10))
 
     def __iter__(self) -> Iterable[StatusSegment]:
         current = self.get_first_child()
@@ -472,20 +480,21 @@ class StatusIndicator(Gtk.Box):
         self,
         *,
         model: StatusModel,
+        icon_size: int = 88,
     ):
         super().__init__(orientation=Gtk.Orientation.VERTICAL, name=model.name)
         self.image = Gtk.Image.new()
-        self.image.set_pixel_size(88)
+        self.image.set_pixel_size(icon_size)
         self.image.add_css_class("icon")
         self.append(self.image)
         self.set_valign(Gtk.Align.CENTER)
         self.set_halign(Gtk.Align.CENTER)
 
         if model.levels > 0:
-            self.progress_bar = StatusBar(model.levels)
-            self.append(self.progress_bar)
+            self.status_bar = StatusBar(model.levels)
+            self.append(self.status_bar)
         else:
-            self.progress_bar = None
+            self.status_bar = None
         self._model_value_id = None
         self._model_icon_id = None
         self.model = model
@@ -499,8 +508,8 @@ class StatusIndicator(Gtk.Box):
         self.on_icon_change(model.icon)
 
     def on_value_change(self, progress):
-        if self.progress_bar is not None:
-            self.progress_bar.set_level(progress)
+        if self.status_bar is not None:
+            self.status_bar.set_level(progress)
 
     def on_icon_change(self, icon):
         if icon is not None:
@@ -521,29 +530,51 @@ class KlarWindow(Gtk.Window):
         main_view.append(self.stack)
         self.set_child(main_view)
 
+        def show_hide_duration(visible):
+            return (
+                config.appearance.animation.reveal.duration
+                if visible
+                else config.appearance.animation.hide.duration
+            )
+
         self.set_visible = GenericTransition(
             self.set_visible,
             before=lambda x: x,
             setter=self.set_opacity,
             initial=0.01,
             target=1.0,
+            duration=show_hide_duration,
         )
 
-    def add_status_indicator(self, progress_box: StatusIndicator):
-        self.stack.add_named(progress_box, progress_box.get_name())
+    def add_status_indicator(self, status_indicator: StatusIndicator):
+        self.stack.add_named(status_indicator, status_indicator.get_name())
 
     def switch_to(self, name):
         self.stack.set_visible_child_name(name)
 
 
-MONITORS = [
-    PulseAudioMonitor(),
-    BrightnessMonitor("display-brightness-symbolic", DEFAULT_BRIGHTNESS_PROVIDER),
-    BrightnessMonitor(
-        "keyboard-brightness-symbolic", DEFAULT_KEYBOARD_BRIGHTNESS_PROVIDER
-    ),
-    AcMonitor(),
-]
+def create_monitors() -> Generator[Monitor]:
+    if config.monitor.display.enabled:
+        yield BrightnessMonitor(
+            "display-brightness-symbolic",
+            file=config.monitor.display.device,
+            max_brightness=config.monitor.display.max_brightness,
+            levels=config.monitor.display.levels,
+        )
+
+    if config.monitor.keyboard.enabled:
+        yield BrightnessMonitor(
+            "keyboard-brightness-symbolic",
+            file=config.monitor.keyboard.device,
+            max_brightness=config.monitor.keyboard.max_brightness,
+            levels=config.monitor.keyboard.levels,
+        )
+
+    if config.monitor.power.enabled:
+        yield PowerMonitor()
+
+    if config.monitor.pulseaudio.enabled:
+        yield PulseAudioMonitor(levels=config.monitor.pulseaudio.levels)
 
 
 class KlarApp(Adw.Application):
@@ -556,6 +587,9 @@ class KlarApp(Adw.Application):
         def show_callback(model, prop):
             if self._timer_id is None:
                 self.window.set_visible(True)
+                display = Gdk.Display.get_default()
+                monitor = display.get_monitor_at_surface(self.window.get_surface())
+                LayerShell.set_monitor(self.window, monitor)
             else:
                 GLib.source_remove(self._timer_id)
 
@@ -569,12 +603,14 @@ class KlarApp(Adw.Application):
             self._timer_id = GLib.timeout_add(1000, hide)
 
         self.window = KlarWindow(self)
-        for monitor in MONITORS:
+        for monitor in create_monitors():
             monitor.start()
             if monitor.is_started():
                 status_model = monitor.new_model()
                 status_model.connect("notify", show_callback)
-                status_indicator = StatusIndicator(model=status_model)
+                status_indicator = StatusIndicator(
+                    model=status_model, icon_size=config.appearance.icon_size
+                )
                 self.window.add_status_indicator(status_indicator)
 
         LayerShell.init_for_window(self.window)
@@ -598,10 +634,11 @@ def main():
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
         )
 
-    if app.get_style_manager().get_dark():
+    if app.get_style_manager().get_dark() or config.appearance.system_theme == "dark":
         _set_dark_style()
 
-    app.get_style_manager().connect("notify::dark", on_dark)
+    if config.appearance.system_theme == "dark":
+        app.get_style_manager().connect("notify::dark", on_dark)
 
     app.register(None)
     app.run()
