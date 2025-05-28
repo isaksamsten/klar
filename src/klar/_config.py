@@ -33,9 +33,7 @@ class BrightnessProvider:
     source: str
 
 
-def guess_default_brightness_provider(
-    base="/sys/class/backlight",
-) -> BrightnessProvider:
+def guess_default_brightness_provider(base) -> BrightnessProvider:
     subdirs = os.listdir(base)
     if not subdirs:
         raise FileNotFoundError("No backlight devices found!")
@@ -63,9 +61,9 @@ def guess_default_brightness_provider(
     return best
 
 
-DEFAULT_BRIGHTNESS_PROVIDER = guess_default_brightness_provider()
+DEFAULT_BRIGHTNESS_PROVIDER = guess_default_brightness_provider("/sys/class/backlight/")
 DEFAULT_KEYBOARD_BRIGHTNESS_PROVIDER = guess_default_brightness_provider(
-    "/sys/devices/platform/led-controller/leds/"
+    "/sys/class/leds/"
 )
 DEFAULT_CSS_PROVIDER = load_system_style(filename="style.css")
 DEFAULT_DARK_CSS_PROVIDER = load_system_style(filename="style-dark.css")
