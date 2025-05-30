@@ -8,6 +8,11 @@ indicators for brightness, audio, and power events
 - Responds to dark/light theme switches
 - Looks can be customized with CSS.
 
+## Screencast
+
+https://github.com/user-attachments/assets/25562f18-77d4-4d63-b0a6-3d2a97d845b7
+
+
 ## Installation
 
 ```
