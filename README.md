@@ -15,6 +15,8 @@ https://github.com/user-attachments/assets/25562f18-77d4-4d63-b0a6-3d2a97d845b7
 
 ## Installation
 
+### pipx
+
 ```
 pipx install --system-site-packages git+https://github.com/isaksamsten/klar.git
 ```
@@ -29,6 +31,17 @@ pipx install --system-site-packages git+https://github.com/isaksamsten/klar.git
 > - `python3-pulsectl`
 >
 > These are the names of the packages on Fedora.
+
+### Fedora
+
+```
+dnf copr enable isaksamsten/klar
+dnf install klar
+```
+
+## Usage
+
+Start `klar` either from a shell or in your window manager and let it run in the background.
 
 ## Configuration
 
