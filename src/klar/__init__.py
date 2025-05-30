@@ -32,7 +32,6 @@ class Monitor(GObject.Object):
 
     def __init__(self, levels: int = 0):
         super().__init__()
-        print(self.__class__, levels)
         self.levels = levels
 
     def start(self) -> None:
