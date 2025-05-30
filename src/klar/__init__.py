@@ -637,7 +637,7 @@ def main():
     if app.get_style_manager().get_dark() or config.appearance.system_theme == "dark":
         _set_dark_style()
 
-    if config.appearance.system_theme == "dark":
+    if config.appearance.system_theme == "auto":
         app.get_style_manager().connect("notify::dark", on_dark)
 
     app.register(None)
