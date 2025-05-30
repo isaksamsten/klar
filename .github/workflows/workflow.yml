@@ -1,0 +1,42 @@
+name: Build RPM
+
+permissions:
+  contents: write
+on:
+  release:
+    types: [published]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        fedora_version: [41, 42]
+    container:
+      image: fedora:${{ matrix.fedora_version }}
+    steps:
+      - name: Install dependencies
+        run: |
+          dnf -y update
+          dnf -y install rpmdevtools python3-devel python3-pip python3-wheel python3-hatchling python3-gobject git
+      - name: Set up RPM build tree
+        run: rpmdev-setuptree
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Create source archive
+        run: |
+          pip3 install build
+          python3 -m build --sdist
+          cp dist/*.tar.gz ~/rpmbuild/SOURCES/
+      - name: Copy spec file
+        run: cp *.spec ~/rpmbuild/SPECS/
+      - name: Build the RPM
+        run: rpmbuild -ba ~/rpmbuild/SPECS/*.spec
+      - name: Upload RPM to GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'release'
+        with:
+          files: |
+            /github/home/rpmbuild/RPMS/**/*.rpm
+            /github/home/rpmbuild/SRPMS/*.src.rpm
