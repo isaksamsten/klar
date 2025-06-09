@@ -132,7 +132,7 @@ class StatusBar(Gtk.Box):
         self.levels = levels
         self.set_hexpand(True)
         for i in range(levels):
-            self.append(StatusSegment(height=6, width=8))
+            self.append(StatusSegment(height=6))
 
     def __iter__(self) -> Iterable[StatusSegment]:
         current = self.get_first_child()
