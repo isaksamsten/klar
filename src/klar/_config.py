@@ -47,6 +47,8 @@ def _guess_brightness_provider(base: Path) -> Tuple[str | None, int | None]:
                 best = brightness_file
                 best_max = max_brightness
 
+    if best is not None:
+        print("Guessing ", best.brightness_file)
     return best.as_posix(), best_max
 
 

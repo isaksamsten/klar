@@ -127,12 +127,12 @@ class StatusSegment(Gtk.Box):
 class StatusBar(Gtk.Box):
     def __init__(self, levels=10):
         super().__init__(
-            orientation=Gtk.Orientation.HORIZONTAL, spacing=2, name="status-bar"
+            orientation=Gtk.Orientation.HORIZONTAL, spacing=1, name="status-bar"
         )
         self.levels = levels
         self.set_hexpand(True)
         for i in range(levels):
-            self.append(StatusSegment(height=10))
+            self.append(StatusSegment(height=6, width=8))
 
     def __iter__(self) -> Iterable[StatusSegment]:
         current = self.get_first_child()
@@ -290,7 +290,9 @@ class KlarApp(Adw.Application):
         LayerShell.init_for_window(self.window)
         LayerShell.set_namespace(self.window, "klar")
         LayerShell.set_layer(self.window, LayerShell.Layer.OVERLAY)
-        LayerShell.auto_exclusive_zone_enable(self.window)
+        LayerShell.set_anchor(self.window, LayerShell.Edge.BOTTOM, True)
+        LayerShell.set_margin(self.window, LayerShell.Edge.BOTTOM, 100)
+        # LayerShell.auto_exclusive_zone_enable(self.window)
         LayerShell.set_keyboard_mode(self.window, LayerShell.KeyboardMode.NONE)
 
 

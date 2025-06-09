@@ -1,8 +1,8 @@
 :root {
-  --bg-color: rgba(229, 229, 234, 0.7);
-  --fg-color: rgb(72, 72, 74);
-  --indicator-inactive-color: rgb(209, 209, 214);
-  --indicator-active-color: rgb(99, 99, 102);
+  --bg-color: rgba(239, 239, 239, 0.9);
+  --fg-color: rgb(145, 145, 145);
+  --indicator-inactive-color: rgb(108, 108, 108);
+  --indicator-active-color: rgb(239, 239, 239);
 }
 
 #klar {
@@ -13,7 +13,7 @@
 #main-view {
     background-color: var(--bg-color);
     border-radius: 22px;
-    padding: 20px 30px 20px;
+    padding: 10px 20px 10px;
 }
 
 .icon {
@@ -33,13 +33,6 @@
     opacity: 1;
 }
 
-#status-segment:first-child {
-  border-radius: 3px 0 0 3px;
-}
-
-#status-segment:last-child {
-  border-radius: 0 3px 3px 0;
-}
 
 #status-segment.active {
     background-color: var(--indicator-active-color);
