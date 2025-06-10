@@ -137,6 +137,7 @@ class AppearanceConfig:
     icon_size: int
     system_theme: str
     animation: AnimationConfig
+    bottom_margin: int
 
 
 @dataclass
@@ -200,6 +201,7 @@ def load_configuration(config_path=None):
         appearance=AppearanceConfig(
             icon_size=appearance_section.get("icon_size", 88),
             system_theme=appearance_section.get("system_theme", "auto"),
+            bottom_margin=appearance_section.get("bottom_margin", 100),
             animation=AnimationConfig(
                 reveal=RevealAnimationConfig(
                     duration=reveal_section.get("duration", 20)

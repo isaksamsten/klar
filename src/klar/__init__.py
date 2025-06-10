@@ -304,9 +304,11 @@ class KlarApp(Adw.Application):
         LayerShell.init_for_window(self.window)
         LayerShell.set_namespace(self.window, "klar")
         LayerShell.set_layer(self.window, LayerShell.Layer.OVERLAY)
-        LayerShell.set_anchor(self.window, LayerShell.Edge.BOTTOM, True)
-        LayerShell.set_margin(self.window, LayerShell.Edge.BOTTOM, 100)
-        # LayerShell.auto_exclusive_zone_enable(self.window)
+        if config.appearance.bottom_margin >= 0:
+            LayerShell.set_anchor(self.window, LayerShell.Edge.BOTTOM, True)
+            LayerShell.set_margin(
+                self.window, LayerShell.Edge.BOTTOM, config.appearance.bottom_margin
+            )
         LayerShell.set_keyboard_mode(self.window, LayerShell.KeyboardMode.NONE)
 
 
