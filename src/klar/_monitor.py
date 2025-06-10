@@ -56,15 +56,19 @@ class FileMonitor(Monitor):
 
     @override
     def do_start(self):
-        if self._file is not None:
+        if self._file is not None and self._file.query_exists(None):
+            logger.debug("The file %s is monitored for change", self._file.get_path())
             self._file_monitor = self._file.monitor(Gio.FileMonitorFlags.NONE, None)
             self._file_monitor_id = self._file_monitor.connect(
                 "changed", self._on_file_change
             )
+        else:
+            if self._file is not None:
+                logger.debug("The file %s does not exist", self._file.get_path())
 
     @override
     def is_started(self) -> bool:
-        return self._file is not None
+        return self._file is not None and self._file_monitor is not None
 
     @override
     def do_stop(self) -> None:
@@ -298,7 +302,7 @@ class PulseAudioMonitor(Monitor):
             if self.current_sink != sink.name:
                 self.current_sink = sink.name
         except Exception:
-            pass
+            logger.exception("Recoverable error in pulse event")
         return False
 
     def new_model(self):
