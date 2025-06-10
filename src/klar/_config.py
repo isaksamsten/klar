@@ -84,6 +84,18 @@ class MonitorBase:
 class BrightnessConfig(MonitorBase):
     device: str
     max_brightness: int
+    exponent: float
+
+    def __post_init__(self):
+        super().__post_init__()
+        if not isinstance(self.exponent, float):
+            logger.warning("exponent must be a float, got %r", self.exponent)
+            self.exponent = 1.0
+
+        if not isinstance(self.max_brightness, int):
+            logger.warning(
+                "max_brightness must be an integer, got %r", self.max_brightness
+            )
 
 
 @dataclass
@@ -147,6 +159,7 @@ def _load_brightness_config(section: dict, base_path: Path):
         device=device,
         max_brightness=max_brightness,
         levels=section.get("levels", 16),
+        exponent=section.get("exponent", 1.0),
     )
 
 

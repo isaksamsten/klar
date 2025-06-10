@@ -14,10 +14,11 @@ class StatusModel(GObject.Object):
     name: str
     levels: int
 
-    def __init__(self, name: str, levels: int = 16):
+    def __init__(self, name: str, levels: int = 16, exponent: float = 1.0):
         super().__init__()
         self.name = name
         self.levels = levels
+        self.exponent = exponent
 
 
 class Monitor(GObject.Object):
@@ -86,10 +87,13 @@ class FileMonitor(Monitor):
 class BrightnessMonitor(FileMonitor):
     brightness = GObject.Property(type=float, default=0.0)
 
-    def __init__(self, icon, *, file: str, max_brightness: int, levels: int):
+    def __init__(
+        self, icon, *, file: str, max_brightness: int, levels: int, exponent: float
+    ):
         super().__init__(Gio.File.new_for_path(file), levels=levels)
         self.icon = icon
         self.max_brightness = max_brightness
+        self.exponent = exponent
 
     @override
     def on_change(self, data: str) -> None:
@@ -100,7 +104,7 @@ class BrightnessMonitor(FileMonitor):
         if not self.is_started():
             raise ValueError(f"BrightnessMonitor for {path} has not been started")
 
-        model = StatusModel(f"brightness-{path}", self.levels)
+        model = StatusModel(f"brightness-{path}", self.levels, self.exponent)
         model.icon = Gio.ThemedIcon.new(self.icon)
         self.bind_property("brightness", model, "value")
         return model

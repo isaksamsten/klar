@@ -129,11 +129,12 @@ class StatusSegment(Gtk.Box):
 
 
 class StatusBar(Gtk.Box):
-    def __init__(self, levels=10):
+    def __init__(self, levels=10, exponent=1.0):
         super().__init__(
             orientation=Gtk.Orientation.HORIZONTAL, spacing=1, name="status-bar"
         )
         self.levels = levels
+        self.exponent = exponent
         self.set_hexpand(True)
         for i in range(levels):
             self.append(StatusSegment(height=6))
@@ -145,7 +146,9 @@ class StatusBar(Gtk.Box):
             current = current.get_next_sibling()
 
     def set_level(self, level: float):
-        filled_levels = int(round(max(0.0, min(1.0, level)) * self.levels))
+        level = max(0.0, min(1.0, level))
+        level = level ** (1 / self.exponent)
+        filled_levels = math.floor(self.levels * level)
         for i, status_segment in enumerate(list(self)):
             status_segment.set_active(i < filled_levels)
             status_segment.set_warning(level > 1.0)
@@ -169,7 +172,7 @@ class StatusIndicator(Gtk.Box):
         self.set_halign(Gtk.Align.CENTER)
 
         if model.levels > 0:
-            self.status_bar = StatusBar(model.levels)
+            self.status_bar = StatusBar(model.levels, model.exponent)
             self.append(self.status_bar)
         else:
             self.status_bar = None
@@ -238,6 +241,7 @@ def create_monitors() -> Generator[Monitor]:
             file=config.monitor.display.device,
             max_brightness=config.monitor.display.max_brightness,
             levels=config.monitor.display.levels,
+            exponent=config.monitor.display.exponent,
         )
 
     if config.monitor.keyboard.enabled:
@@ -246,6 +250,7 @@ def create_monitors() -> Generator[Monitor]:
             file=config.monitor.keyboard.device,
             max_brightness=config.monitor.keyboard.max_brightness,
             levels=config.monitor.keyboard.levels,
+            exponent=config.monitor.keyboard.exponent,
         )
 
     if config.monitor.power.enabled:
