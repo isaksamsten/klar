@@ -1,7 +1,11 @@
+import logging
 import threading
-import pulsectl
 from typing import override
+
+import pulsectl
 from gi.repository import Gio, GLib, GObject
+
+logger = logging.getLogger(__name__)
 
 
 class StatusModel(GObject.Object):

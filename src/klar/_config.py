@@ -8,6 +8,12 @@ from typing import Tuple
 
 from gi.repository import Gtk
 
+import logging
+
+
+logging.basicConfig()
+logger = logging.getLogger(__name__)
+
 
 def load_system_style(filename="style.css", priority=0):
     with importlib.resources.files("klar.resources").joinpath(filename).open("rb") as f:
@@ -48,7 +54,9 @@ def _guess_brightness_provider(base: Path) -> Tuple[str | None, int | None]:
                 best_max = max_brightness
 
     if best is not None:
-        print("Guessing ", best.brightness_file)
+        logger.info("Guessing brightness file %s", best)
+    else:
+        logger.error("Failed to guess brigness provider, please pass one explicitly")
     return best.as_posix(), best_max
 
 
@@ -57,6 +65,7 @@ def _get_max_brightness(file: Path) -> int | None:
         with open(file) as f:
             return int(f.read())
     except Exception:
+        logger.exception("Failed to get maximum brightness for %s", file)
         return None
 
 
@@ -64,6 +73,11 @@ def _get_max_brightness(file: Path) -> int | None:
 class MonitorBase:
     enabled: bool
     levels: int
+
+    def __post_init__(self):
+        if not isinstance(self.levels, int):
+            logger.warning("levels must be an int, got %r", self.levels)
+            self.levels = 16
 
 
 @dataclass
@@ -146,6 +160,12 @@ def load_configuration(config_path=None):
             config = tomllib.load(f)
     else:
         config = {}
+
+    log_level = config.get("log_level", "WARN")
+    if log_level not in ("ERROR", "WARN", "INFO", "DEBUG"):
+        log_level = "WARN"
+
+    logging.getLogger().setLevel(log_level)
 
     appearance_section = config.get("appearance", {})
     animation_section = appearance_section.get("animation", {})

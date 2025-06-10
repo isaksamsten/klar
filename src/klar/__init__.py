@@ -1,4 +1,6 @@
+import logging
 from ctypes import CDLL
+import math
 from typing import Generator, Iterable
 
 CDLL("libgtk4-layer-shell.so.0")
@@ -28,6 +30,8 @@ from ._monitor import (  # noqa: E402
     BrightnessMonitor,
     StatusModel,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def ease_out_cubic(t):
@@ -280,12 +284,17 @@ class KlarApp(Adw.Application):
         for monitor in create_monitors():
             monitor.start()
             if monitor.is_started():
+                logger.info(
+                    "%s has been started and is listening", monitor.__class__.__name__
+                )
                 status_model = monitor.new_model()
                 status_model.connect("notify", show_callback)
                 status_indicator = StatusIndicator(
                     model=status_model, icon_size=config.appearance.icon_size
                 )
                 self.window.add_status_indicator(status_indicator)
+            else:
+                logger.info("%s could not be started", monitor.__class__.__name__)
 
         LayerShell.init_for_window(self.window)
         LayerShell.set_namespace(self.window, "klar")
