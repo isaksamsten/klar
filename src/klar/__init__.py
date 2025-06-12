@@ -261,6 +261,8 @@ def create_monitors() -> Generator[Monitor]:
 
 
 class KlarApp(Adw.Application):
+    window: KlarWindow | None
+
     def __init__(self) -> None:
         super().__init__(application_id="se.samsten.klar")
         self.window = None
@@ -268,18 +270,24 @@ class KlarApp(Adw.Application):
 
     def do_activate(self):
         def show_callback(model, _prop):
+            if self.window is None:
+                return
+
             if self._timer_id is None:
                 self.window.set_visible(True)
                 display = Gdk.Display.get_default()
-                monitor = display.get_monitor_at_surface(self.window.get_surface())
-                LayerShell.set_monitor(self.window, monitor)
+                surface = self.window.get_surface()
+                if display is not None and surface is not None:
+                    monitor = display.get_monitor_at_surface(surface)
+                    LayerShell.set_monitor(self.window, monitor)
             else:
                 GLib.source_remove(self._timer_id)
 
             self.window.switch_to(model.name)
 
             def hide():
-                self.window.set_visible(False)
+                if self.window is not None:
+                    self.window.set_visible(False)
                 self._timer_id = None
                 return False
 
@@ -314,17 +322,21 @@ class KlarApp(Adw.Application):
 
 def main():
     app = KlarApp()
-    Gtk.StyleContext.add_provider_for_display(
-        Gdk.Display.get_default(),
-        DEFAULT_CSS_PROVIDER,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
-    )
-    if DEFAULT_USER_CSS_PROVIDER is not None:
+    display = Gdk.Display.get_default()
+    if display is not None:
         Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(),
-            DEFAULT_USER_CSS_PROVIDER,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
+            display,
+            DEFAULT_CSS_PROVIDER,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
+        if DEFAULT_USER_CSS_PROVIDER is not None:
+            Gtk.StyleContext.add_provider_for_display(
+                display,
+                DEFAULT_USER_CSS_PROVIDER,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 2,
+            )
+    else:
+        logger.error("Could not find default display")
 
     if app.get_style_manager().get_dark() or config.appearance.system_theme == "dark":
         _set_dark_style()
@@ -333,31 +345,42 @@ def main():
         app.get_style_manager().connect("notify::dark", on_dark)
 
     app.register(None)
-    app.run()
+    if app.get_is_registered():
+        logger.info("klar is already running...")
+    else:
+        app.run(None)
 
 
 def on_dark(style_manager, _prop):
     if style_manager.get_dark():
         _set_dark_style()
     else:
-        Gtk.StyleContext.remove_provider_for_display(
-            Gdk.Display.get_default(), DEFAULT_DARK_CSS_PROVIDER
-        )
-        if DEFAULT_DARK_USER_CSS_PROVIDER is not None:
+        display = Gdk.Display.get_default()
+        if display is not None:
             Gtk.StyleContext.remove_provider_for_display(
-                Gdk.Display.get_default(), DEFAULT_DARK_USER_CSS_PROVIDER
+                display, DEFAULT_DARK_CSS_PROVIDER
             )
+            if DEFAULT_DARK_USER_CSS_PROVIDER is not None:
+                Gtk.StyleContext.remove_provider_for_display(
+                    display, DEFAULT_DARK_USER_CSS_PROVIDER
+                )
+        else:
+            logger.error("Could not find default display")
 
 
 def _set_dark_style():
-    Gtk.StyleContext.add_provider_for_display(
-        Gdk.Display.get_default(),
-        DEFAULT_DARK_CSS_PROVIDER,
-        Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
-    )
-    if DEFAULT_DARK_USER_CSS_PROVIDER is not None:
+    display = Gdk.Display.get_default()
+    if display is not None:
         Gtk.StyleContext.add_provider_for_display(
-            Gdk.Display.get_default(),
-            DEFAULT_DARK_USER_CSS_PROVIDER,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
+            display,
+            DEFAULT_DARK_CSS_PROVIDER,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
         )
+        if DEFAULT_DARK_USER_CSS_PROVIDER is not None:
+            Gtk.StyleContext.add_provider_for_display(
+                display,
+                DEFAULT_DARK_USER_CSS_PROVIDER,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 3,
+            )
+    else:
+        logger.error("Could not find default display")
