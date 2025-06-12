@@ -2,7 +2,7 @@
 
 Name:           klar
 Version:        %{version}
-Release:        1%{?dist}
+Release:        2%{?dist}
 Summary:        A generic OSD
 
 License:        MIT
@@ -41,6 +41,9 @@ indicators for brightness, audio, and power events
 %{python3_sitelib}/klar*
 
 %changelog
+* Thu June 12 2025 Isak Samsten <isak@samsten.se> - 0.2.0-2
+- Fix mistaken build
+
 * Thu June 12 2025 Isak Samsten <isak@samsten.se> - 0.2.0-1
 - Add an option to place the OSD aligned with the bottom of the screen
 - Add exponent for more natural brightness control notification
