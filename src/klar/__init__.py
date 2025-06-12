@@ -345,7 +345,7 @@ def main():
         app.get_style_manager().connect("notify::dark", on_dark)
 
     app.register(None)
-    if app.get_is_registered():
+    if app.get_is_remote():
         logger.info("klar is already running...")
     else:
         app.run(None)
