@@ -1,4 +1,4 @@
-%define version 0.1.0
+%define version 0.2.0
 
 Name:           klar
 Version:        %{version}
@@ -41,5 +41,11 @@ indicators for brightness, audio, and power events
 %{python3_sitelib}/klar*
 
 %changelog
+* Thu June 12 2025 Isak Samsten <isak@samsten.se> - 0.2.0-1
+- Add an option to place the OSD aligned with the bottom of the screen
+- Add exponent for more natural brightness control notification
+- Ensure that the width of the main window stays constant
+- Improve default theme
+
 * Fri May 30 2025 Isak Samsten <isak@samsten.se> - 0.1.0-1
 - Initial release
